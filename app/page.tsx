@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 
 type FoodState = "normal" | "liked" | "blocked";
-type Dish = { name: string; note: string; tags: string[] };
+type Dish = { name: string; note: string; tags: string[]; cuisines?: string[] };
 
 const groups: Record<string, string[]> = {
   "畜肉类": ["猪肉", "牛肉", "羊肉", "兔肉", "猪蹄", "猪耳朵", "猪舌头", "猪尾巴", "猪脑", "牛骨髓", "排骨", "牛蹄筋", "牛板筋"],
@@ -39,8 +39,24 @@ const recipes: Dish[] = [
   { name: "洋葱炒羊肉", note: "香气浓郁，适合偏重口味", tags: ["洋葱", "羊肉"] },
   { name: "秋葵蒸蛋", note: "口感柔和，适合儿童与老人", tags: ["秋葵", "鸡蛋"] },
   { name: "花甲粉丝煲", note: "鲜香有主食感，聚餐气氛足", tags: ["花甲", "粉丝", "大蒜"] },
-  { name: "凉拌菠菜", note: "清口解腻，平衡整桌菜", tags: ["菠菜"] }
+  { name: "凉拌菠菜", note: "清口解腻，平衡整桌菜", tags: ["菠菜"] },
+  { name: "黑椒牛肉意面", note: "黑椒香气浓郁，主食与蛋白质兼顾", tags: ["牛肉", "面条", "洋葱"], cuisines: ["西餐"] },
+  { name: "奶油蘑菇鸡", note: "奶香柔和，适合搭配面包或意面", tags: ["鸡肉", "蘑菇", "洋葱"], cuisines: ["西餐"] },
+  { name: "柠香烤鳕鱼", note: "清爽少油，突出鱼肉鲜味", tags: ["鳕鱼", "柠檬"], cuisines: ["西餐"] },
+  { name: "尼斯风味沙拉", note: "蔬菜丰富，清爽平衡", tags: ["生菜", "西红柿", "鸡蛋"], cuisines: ["西餐"] },
+  { name: "照烧鸡肉饭", note: "甜咸酱香，米饭搭配很满足", tags: ["鸡肉", "洋葱"], cuisines: ["日料"] },
+  { name: "味噌烤三文鱼", note: "咸鲜微甜，油脂香气细腻", tags: ["三文鱼"], cuisines: ["日料"] },
+  { name: "日式牛肉寿喜锅", note: "暖锅共享，适合多人用餐", tags: ["牛肉", "豆腐", "金针菇", "大葱"], cuisines: ["日料"] },
+  { name: "玉子烧", note: "柔软香甜，早餐或配菜都合适", tags: ["鸡蛋"], cuisines: ["日料"] },
+  { name: "韩式辣炒鸡", note: "香辣浓郁，配饭很开胃", tags: ["鸡肉", "洋葱", "大蒜"], cuisines: ["韩餐"] },
+  { name: "韩式牛肉拌饭", note: "一碗兼顾肉、蛋和蔬菜", tags: ["牛肉", "鸡蛋", "菠菜", "香菇"], cuisines: ["韩餐"] },
+  { name: "豆腐海鲜汤", note: "热辣鲜香，适合凉爽天气", tags: ["豆腐", "虾", "花甲"], cuisines: ["韩餐"] },
+  { name: "泰式柠檬虾", note: "酸辣明亮，清爽而有层次", tags: ["虾", "柠檬", "香菜"], cuisines: ["东南亚"] },
+  { name: "菠萝鸡肉炒饭", note: "果香酸甜，适合全家分享", tags: ["菠萝", "鸡肉", "鸡蛋"], cuisines: ["东南亚"] },
+  { name: "越式牛肉米粉", note: "汤头清鲜，香草气息丰富", tags: ["牛肉", "米粉", "香菜"], cuisines: ["东南亚"] }
 ];
+
+const cuisineOptions = ["不限菜系", "中餐", "西餐", "日料", "韩餐", "东南亚"];
 
 export default function Home() {
   const [states, setStates] = useState<Record<string, FoodState>>({});
@@ -48,6 +64,7 @@ export default function Home() {
   const [richness, setRichness] = useState("中等");
   const [meal, setMeal] = useState("晚餐");
   const [taste, setTaste] = useState("家常均衡");
+  const [cuisine, setCuisine] = useState("不限菜系");
   const [notes, setNotes] = useState("");
   const [plan, setPlan] = useState<Dish[] | null>(null);
   const [thinking, setThinking] = useState(false);
@@ -66,7 +83,7 @@ export default function Home() {
   function generate() {
     setThinking(true);
     setTimeout(() => {
-      const wanted = recipes.filter(d => !d.tags.some(t => states[t] === "blocked"));
+      const wanted = recipes.filter(d => !d.tags.some(t => states[t] === "blocked") && (cuisine === "不限菜系" || (cuisine === "中餐" ? !d.cuisines || d.cuisines.includes("中餐") : d.cuisines?.includes(cuisine))));
       const scored = wanted.map((d, i) => ({ d, score: d.tags.filter(t => states[t] === "liked").length * 20 + ((i * 7 + people * 3) % 13) }));
       scored.sort((a, b) => b.score - a.score);
       const base = richness === "简单" ? 2 : richness === "丰盛" ? Math.min(8, Math.max(5, people + 2)) : Math.min(6, Math.max(3, people + 1));
@@ -98,6 +115,10 @@ export default function Home() {
           <label>口味偏好<select value={taste} onChange={e => setTaste(e.target.value)}><option>家常均衡</option><option>清淡少油</option><option>香辣下饭</option><option>高蛋白</option><option>适合孩子</option></select></label>
           <label className="wide">补充要求（可选）<input value={notes} onChange={e => setNotes(e.target.value)} placeholder="例如：30 分钟内做好、有人不能吃辣、想要一道汤……" /></label>
         </div>
+        <div className="cuisine-picker">
+          <div><b>想吃哪种风味？</b><span>Agent 会优先生成对应菜系的组合</span></div>
+          <div className="cuisine-options">{cuisineOptions.map(item => <button key={item} className={cuisine === item ? "on" : ""} onClick={() => { setCuisine(item); setPlan(null); }}>{item}</button>)}</div>
+        </div>
 
         <div className="section-head food-head"><div><span>02 / 食材偏好</span><h2>点出你的态度</h2></div><div className="legend"><i className="liked"/>偏爱 <i className="blocked"/>不吃 <small>每个方块可连续点击</small></div></div>
         <div className="categories">
@@ -111,7 +132,7 @@ export default function Home() {
       </section>
 
       <section id="result" className={`result ${plan ? "show" : ""}`}>
-        {plan && <><div className="result-top"><div><span>YOUR MENU · 今日推荐</span><h2>{people} 人份 · {richness}{meal}</h2><p>{taste}{notes ? ` · 已考虑「${notes}」` : " · 荤素搭配，口味有层次"}</p></div><button onClick={generate}>换一桌 ↻</button></div>
+        {plan && <><div className="result-top"><div><span>YOUR MENU · 今日推荐</span><h2>{people} 人份 · {richness}{meal}</h2><p>{cuisine} · {taste}{notes ? ` · 已考虑「${notes}」` : " · 荤素搭配，口味有层次"}</p></div><button onClick={generate}>换一桌 ↻</button></div>
         <div className="menu-grid">{plan.map((dish, i) => <article key={dish.name}><div className="dish-no">{String(i + 1).padStart(2, "0")}</div><div><h3>{dish.name}</h3><p>{dish.note}</p><div>{dish.tags.map(t => <span key={t}>{t}</span>)}</div></div></article>)}</div>
         <div className="agent-note"><b>Agent 的搭配思路</b><p>优先使用你偏爱的食材，避开所有标记为“不吃”的选项；按 {people} 人份控制菜量，并用蛋白质、蔬菜和清口菜形成平衡。建议每道荤菜准备约 {Math.max(250, people * 120)}g 主料。</p></div></>}
       </section>
