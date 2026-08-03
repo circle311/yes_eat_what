@@ -6,6 +6,7 @@
 /.tmp/
 .dev.log
 .dev.err.log
+site*.tar.gz
 /.pnp
 .pnp.*
 .yarn/*
