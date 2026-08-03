@@ -68,6 +68,15 @@ export default function Home() {
   const [notes, setNotes] = useState("");
   const [plan, setPlan] = useState<Dish[] | null>(null);
   const [thinking, setThinking] = useState(false);
+  const [engine, setEngine] = useState<"local" | "llm">("local");
+  const [apiKey, setApiKey] = useState("");
+  const [showKey, setShowKey] = useState(false);
+  const [model, setModel] = useState("gpt-5.6-terra");
+  const [protocol, setProtocol] = useState<"responses" | "chat">("responses");
+  const [apiUrl, setApiUrl] = useState("https://api.openai.com/v1/responses");
+  const [temperature, setTemperature] = useState("0.7");
+  const [singleUseKey, setSingleUseKey] = useState(true);
+  const [error, setError] = useState("");
 
   const counts = useMemo(() => Object.values(states).reduce((a, s) => ({ ...a, [s]: (a[s] || 0) + 1 }), {} as Record<string, number>), [states]);
 
@@ -80,17 +89,68 @@ export default function Home() {
     });
   }
 
-  function generate() {
+  function makeLocalPlan() {
+    const wanted = recipes.filter(d => !d.tags.some(t => states[t] === "blocked") && (cuisine === "不限菜系" || (cuisine === "中餐" ? !d.cuisines || d.cuisines.includes("中餐") : d.cuisines?.includes(cuisine))));
+    const scored = wanted.map((d, i) => ({ d, score: d.tags.filter(t => states[t] === "liked").length * 20 + ((i * 7 + people * 3) % 13) }));
+    scored.sort((a, b) => b.score - a.score);
+    const base = richness === "简单" ? 2 : richness === "丰盛" ? Math.min(8, Math.max(5, people + 2)) : Math.min(6, Math.max(3, people + 1));
+    return scored.slice(0, base).map(x => x.d);
+  }
+
+  function extractJson(text: string) {
+    const cleaned = text.replace(/```json|```/gi, "").trim();
+    const start = cleaned.indexOf("[");
+    const end = cleaned.lastIndexOf("]");
+    if (start < 0 || end < start) throw new Error("模型没有返回可识别的菜单格式");
+    const parsed = JSON.parse(cleaned.slice(start, end + 1));
+    if (!Array.isArray(parsed) || !parsed.length) throw new Error("模型返回了空菜单");
+    return parsed.slice(0, 10).map((item: Record<string, unknown>) => ({
+      name: String(item.name || "未命名菜品"),
+      note: String(item.note || "由大模型根据偏好生成"),
+      tags: Array.isArray(item.ingredients) ? item.ingredients.slice(0, 5).map(String) : []
+    }));
+  }
+
+  async function generate() {
+    setError("");
     setThinking(true);
-    setTimeout(() => {
-      const wanted = recipes.filter(d => !d.tags.some(t => states[t] === "blocked") && (cuisine === "不限菜系" || (cuisine === "中餐" ? !d.cuisines || d.cuisines.includes("中餐") : d.cuisines?.includes(cuisine))));
-      const scored = wanted.map((d, i) => ({ d, score: d.tags.filter(t => states[t] === "liked").length * 20 + ((i * 7 + people * 3) % 13) }));
-      scored.sort((a, b) => b.score - a.score);
-      const base = richness === "简单" ? 2 : richness === "丰盛" ? Math.min(8, Math.max(5, people + 2)) : Math.min(6, Math.max(3, people + 1));
-      setPlan(scored.slice(0, base).map(x => x.d));
+    try {
+      if (engine === "local") {
+        await new Promise(resolve => setTimeout(resolve, 650));
+        setPlan(makeLocalPlan());
+      } else {
+        if (!apiKey.trim()) throw new Error("请先输入 API Key");
+        const url = new URL(apiUrl);
+        if (url.protocol !== "https:" && url.hostname !== "localhost" && url.hostname !== "127.0.0.1") throw new Error("为保护密钥，接口地址必须使用 HTTPS");
+        const liked = Object.entries(states).filter(([, v]) => v === "liked").map(([k]) => k);
+        const blocked = Object.entries(states).filter(([, v]) => v === "blocked").map(([k]) => k);
+        const dishCount = richness === "简单" ? 2 : richness === "丰盛" ? Math.min(8, Math.max(5, people + 2)) : Math.min(6, Math.max(3, people + 1));
+        const prompt = `你是一名专业家庭配餐师。请为${people}人设计一顿${richness}${meal}。菜系：${cuisine}；口味：${taste}；偏爱食材：${liked.join("、") || "无特别偏爱"}；绝对不能出现：${blocked.join("、") || "无"}；补充要求：${notes || "无"}。请兼顾荤素、营养、烹饪可行性与份量，共${dishCount}道菜。只返回JSON数组，不要Markdown。每项格式：{"name":"菜名","note":"简短搭配理由和建议份量","ingredients":["主要食材"]}。`;
+        const body = protocol === "responses"
+          ? { model, input: prompt, store: false, text: { verbosity: "low" } }
+          : { model, messages: [{ role: "system", content: "你是专业、谨慎的家庭配餐师。严格遵守忌口并只输出JSON。" }, { role: "user", content: prompt }], temperature: Number(temperature) };
+        const response = await fetch(url.toString(), {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey.trim()}` },
+          body: JSON.stringify(body),
+          cache: "no-store",
+          referrerPolicy: "no-referrer"
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data?.error?.message || `接口请求失败（${response.status}）`);
+        const outputText = protocol === "responses"
+          ? (data.output_text || data.output?.flatMap((x: { content?: { text?: string }[] }) => x.content || []).map((x: { text?: string }) => x.text || "").join(""))
+          : data.choices?.[0]?.message?.content;
+        if (!outputText) throw new Error("模型没有返回文本结果");
+        setPlan(extractJson(outputText));
+        if (singleUseKey) setApiKey("");
+      }
+      setTimeout(() => document.getElementById("result")?.scrollIntoView({ behavior: "smooth" }), 50);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "生成失败，请检查设置后重试");
+    } finally {
       setThinking(false);
-      document.getElementById("result")?.scrollIntoView({ behavior: "smooth" });
-    }, 850);
+    }
   }
 
   return (
@@ -120,6 +180,23 @@ export default function Home() {
           <div className="cuisine-options">{cuisineOptions.map(item => <button key={item} className={cuisine === item ? "on" : ""} onClick={() => { setCuisine(item); setPlan(null); }}>{item}</button>)}</div>
         </div>
 
+        <div className="engine-panel">
+          <div className="engine-title"><div><span>配餐引擎</span><h3>选择谁来为你搭配</h3></div><div className="engine-tabs"><button className={engine === "local" ? "on" : ""} onClick={() => { setEngine("local"); setError(""); }}>本地规则 <small>免费</small></button><button className={engine === "llm" ? "on" : ""} onClick={() => { setEngine("llm"); setError(""); }}>大模型 <small>BYOK</small></button></div></div>
+          {engine === "local" ? <div className="local-info"><b>⚡ 即时、免费、隐私友好</b><p>完全在当前页面中计算，不联网调用模型，不消耗任何 Token。</p></div> : <div className="llm-settings">
+            <div className="security-note"><b>🔒 密钥保护模式</b><p>API Key 只保存在当前页面内存中，不写入数据库、Cookie 或浏览器存储；请求由你的浏览器直接发送到下方接口，本站服务器不会接触密钥。刷新页面即清除。</p></div>
+            <div className="llm-grid">
+              <label>模型<input list="model-list" value={model} onChange={e => setModel(e.target.value)} autoComplete="off" /><datalist id="model-list"><option value="gpt-5.6-terra"/><option value="gpt-5.6-luna"/><option value="gpt-5.6-sol"/><option value="gpt-4.1-mini"/></datalist></label>
+              <label>API Key<div className="key-input"><input type={showKey ? "text" : "password"} value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="sk-…" autoComplete="off" spellCheck={false}/><button type="button" onClick={() => setShowKey(v => !v)}>{showKey ? "隐藏" : "显示"}</button></div></label>
+            </div>
+            <details className="advanced"><summary>高级设置 <span>接口地址、协议与生成参数</span></summary><div className="advanced-grid">
+              <label>接口协议<select value={protocol} onChange={e => { const p = e.target.value as "responses" | "chat"; setProtocol(p); setApiUrl(p === "responses" ? "https://api.openai.com/v1/responses" : "https://api.openai.com/v1/chat/completions"); }}><option value="responses">OpenAI Responses API</option><option value="chat">OpenAI 兼容 Chat Completions</option></select></label>
+              <label>接口 URL<input value={apiUrl} onChange={e => setApiUrl(e.target.value)} spellCheck={false}/></label>
+              {protocol === "chat" && <label>Temperature<input type="number" min="0" max="2" step="0.1" value={temperature} onChange={e => setTemperature(e.target.value)}/></label>}
+              <label className="check"><input type="checkbox" checked={singleUseKey} onChange={e => setSingleUseKey(e.target.checked)}/><span>单次使用后立即从页面内存清除密钥</span></label>
+            </div><p className="endpoint-warning">自定义 URL 对应的服务将直接收到你的 API Key。只使用你信任的 HTTPS 服务，切勿使用来源不明的中转地址。</p></details>
+          </div>}
+        </div>
+
         <div className="section-head food-head"><div><span>02 / 食材偏好</span><h2>点出你的态度</h2></div><div className="legend"><i className="liked"/>偏爱 <i className="blocked"/>不吃 <small>每个方块可连续点击</small></div></div>
         <div className="categories">
           {Object.entries(groups).map(([group, foods], index) => <details key={group} open={index < 4}>
@@ -128,13 +205,14 @@ export default function Home() {
           </details>)}
         </div>
 
-        <div className="action-bar"><div><b>{counts.liked || 0}</b> 个偏爱 · <b>{counts.blocked || 0}</b> 个不吃</div><button onClick={generate} disabled={thinking}>{thinking ? "正在认真搭配…" : "请 Agent 帮我配一餐"}<span>✦</span></button></div>
+        {error && <div className="error-box" role="alert">{error}</div>}
+        <div className="action-bar"><div><b>{counts.liked || 0}</b> 个偏爱 · <b>{counts.blocked || 0}</b> 个不吃 <small>{engine === "llm" ? `· ${model}` : "· 本地规则"}</small></div><button onClick={generate} disabled={thinking}>{thinking ? (engine === "llm" ? "模型正在搭配…" : "正在认真搭配…") : (engine === "llm" ? "让大模型配一餐" : "请 Agent 帮我配一餐")}<span>✦</span></button></div>
       </section>
 
       <section id="result" className={`result ${plan ? "show" : ""}`}>
         {plan && <><div className="result-top"><div><span>YOUR MENU · 今日推荐</span><h2>{people} 人份 · {richness}{meal}</h2><p>{cuisine} · {taste}{notes ? ` · 已考虑「${notes}」` : " · 荤素搭配，口味有层次"}</p></div><button onClick={generate}>换一桌 ↻</button></div>
         <div className="menu-grid">{plan.map((dish, i) => <article key={dish.name}><div className="dish-no">{String(i + 1).padStart(2, "0")}</div><div><h3>{dish.name}</h3><p>{dish.note}</p><div>{dish.tags.map(t => <span key={t}>{t}</span>)}</div></div></article>)}</div>
-        <div className="agent-note"><b>Agent 的搭配思路</b><p>优先使用你偏爱的食材，避开所有标记为“不吃”的选项；按 {people} 人份控制菜量，并用蛋白质、蔬菜和清口菜形成平衡。建议每道荤菜准备约 {Math.max(250, people * 120)}g 主料。</p></div></>}
+        <div className="agent-note"><b>{engine === "llm" ? `${model} 的搭配思路` : "Agent 的搭配思路"}</b><p>优先使用你偏爱的食材，避开所有标记为“不吃”的选项；按 {people} 人份控制菜量，并用蛋白质、蔬菜和清口菜形成平衡。{engine === "local" && `建议每道荤菜准备约 ${Math.max(250, people * 120)}g 主料。`}</p></div></>}
       </section>
 
       <footer><div className="brand"><span>食</span> 今日吃什么</div><p>认真选择，也认真吃饭。</p></footer>
