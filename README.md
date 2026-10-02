@@ -1,8 +1,7 @@
-# vinext-starter
+# 今日吃什么
 
-A clean full-stack starter running on
-[vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and
-Drizzle support.
+根据人数、丰盛程度、菜系和食材偏好搭配一餐，支持本地规则与自带密钥的大模型配餐。
+项目使用 [vinext](https://github.com/cloudflare/vinext)，保留 Sites 和 GitHub Pages 的构建配置。
 
 ## Prerequisites
 
@@ -11,12 +10,20 @@ Drizzle support.
 ## Quick Start
 
 ```bash
-npm install
+npm ci
 npm run dev
 npm run build
+npm test
 ```
 
 This starter does not use `wrangler.jsonc`.
+
+以上命令适用于 Windows PowerShell、cmd 和其他常见终端。Wrangler 的本地路径由
+`vite.config.ts` 配置，无需在命令中使用 Unix 环境变量赋值语法。
+
+迁移目录时保留源代码、隐藏配置、锁文件、`public/`、`worker/` 和 `tests/`。
+在新目录执行 `npm ci` 重新生成依赖；不要直接复用旧目录的 `node_modules`，
+其中的链接和启动脚本可能引用旧路径。`dist/`、`.next/` 和 `out/` 可以重新构建。
 
 ## Included Shape
 
@@ -91,7 +98,7 @@ actions tied to the current ChatGPT user. Leave public content anonymous.
 
 - `npm run dev`: start local development
 - `npm run build`: verify the vinext build output
-- `npm test`: build the starter and verify its rendered loading skeleton
+- `npm test`: build the site and verify the rendered meal planner and packaged assets
 - `npm run db:generate`: generate Drizzle migrations after schema changes
 
 ## Learn More
