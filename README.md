@@ -1,7 +1,8 @@
 # 今日吃什么
 
 根据人数、丰盛程度、菜系和食材偏好搭配一餐，支持本地规则与自带密钥的大模型配餐。
-项目使用 [vinext](https://github.com/cloudflare/vinext)，保留 Sites 和 GitHub Pages 的构建配置。
+项目使用 [vinext](https://github.com/cloudflare/vinext)，由 ChatGPT Sites 托管。
+GitHub 仓库用于代码存档与共同编辑。推送代码不会自动发布站点；线上更新通过 Sites 发布流程完成。
 
 ## Prerequisites
 
@@ -23,7 +24,7 @@ This starter does not use `wrangler.jsonc`.
 
 迁移目录时保留源代码、隐藏配置、锁文件、`public/`、`worker/` 和 `tests/`。
 在新目录执行 `npm ci` 重新生成依赖；不要直接复用旧目录的 `node_modules`，
-其中的链接和启动脚本可能引用旧路径。`dist/`、`.next/` 和 `out/` 可以重新构建。
+其中的链接和启动脚本可能引用旧路径。`dist/` 和 `.next/` 可以重新构建。
 
 ## Included Shape
 

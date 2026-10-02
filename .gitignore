@@ -29,6 +29,7 @@ site*.tar.gz
 
 # debug
 npm-debug.log*
+gh-auth*.log
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
